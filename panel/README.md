@@ -16,9 +16,17 @@ satu password.
   uptime, load, status service 3proxy, dan jumlah koneksi aktif per proxy.
 - Login dikunci 10 menit setelah 5 kali salah password.
 
+Ada dua cara memasangnya, **pilih salah satu** saja (jangan dua-duanya di VPS
+yang sama):
+
+- **Cara A: langsung di Ubuntu** dengan script installer. 3proxy dipasang dari
+  paket apt resmi.
+- **[Cara B: lewat Docker](#cara-b-instalasi-lewat-docker)**. 3proxy dan panel
+  jalan di satu container, tidak ada yang dipasang di sistem selain Docker.
+
 ---
 
-## Tutorial instalasi di Ubuntu
+## Cara A: Instalasi langsung di Ubuntu
 
 Untuk **Ubuntu 22.04 / 24.04** (atau Debian 12) dengan akses root/sudo. Script
 installer otomatis memasang 3proxy (dari repository resmi 3proxy.org), Go,
@@ -97,7 +105,7 @@ Kalau yang muncul adalah IP VPS kamu, proxy sudah jalan.
 
 ---
 
-## Tutorial update
+## Update (Cara A)
 
 ### Update panel
 
@@ -120,7 +128,93 @@ klik **Terapkan ulang**.
 
 ---
 
-## Perintah yang sering dipakai
+## Cara B: Instalasi lewat Docker
+
+Untuk VPS Linux apa saja yang bisa menjalankan Docker (contoh di bawah untuk
+Ubuntu). 3proxy di-build dari kode di repository ini, lalu dijalankan bersama
+panel dalam satu container.
+
+### Langkah 1: Masuk ke VPS
+
+```bash
+ssh root@IP-VPS
+```
+
+### Langkah 2: Pasang Docker dan git
+
+Lewati perintah pertama kalau Docker sudah terpasang (cek dengan
+`docker compose version`).
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+```
+
+```bash
+sudo apt install -y git
+```
+
+### Langkah 3: Download kode
+
+```bash
+git clone https://github.com/kontaknurman/3proxy.git ~/3proxy
+```
+
+### Langkah 4: Buat password panel
+
+Ganti `passwordkamu` dengan password yang kamu mau (pakai huruf dan angka):
+
+```bash
+cd ~/3proxy/panel && echo "PANEL_PASSWORD='passwordkamu'" > .env
+```
+
+### Langkah 5: Jalankan
+
+```bash
+cd ~/3proxy/panel && sudo docker compose up -d --build
+```
+
+Pertama kali butuh beberapa menit untuk build. Cek hasilnya:
+
+```bash
+sudo docker compose ps
+```
+
+Kalau status `3proxy-panel` adalah `Up`, buka port di firewall seperti
+[Langkah 4 di Cara A](#langkah-4-buka-port-di-firewall), lalu buka
+`http://IP-VPS:8088` dan login.
+
+Bedanya dengan Cara A: di Docker 3proxy jalan sebagai root tanpa chroot, jadi
+port di bawah 1024 (misalnya 80) juga boleh dipakai untuk proxy.
+
+### Update (Cara B)
+
+Perintah ini meng-update panel **dan** 3proxy sekaligus. Data proxy tetap
+aman di folder `~/3proxy/panel/data/`.
+
+```bash
+cd ~/3proxy && git pull && cd panel && sudo docker compose up -d --build
+```
+
+### Perintah Docker yang sering dipakai
+
+Jalankan dari folder `~/3proxy/panel`:
+
+| Keperluan | Perintah |
+| --- | --- |
+| Cek status | `sudo docker compose ps` |
+| Lihat log | `sudo docker compose logs -f` |
+| Restart | `sudo docker compose restart` |
+| Stop | `sudo docker compose down` |
+| Ganti password | edit `.env`, lalu `sudo docker compose up -d` |
+| Lihat config 3proxy | `sudo cat data/3proxy.cfg` |
+
+Pengaturan lain dari tabel [Pengaturan](#pengaturan) yang bisa diisi di
+`.env`: `PANEL_LISTEN`, `PANEL_HOST`, `PANEL_HEADER`, `PANEL_TLS_CERT` dan
+`PANEL_TLS_KEY`. Sisanya sudah diatur oleh image.
+
+---
+
+## Perintah yang sering dipakai (Cara A)
 
 | Keperluan | Perintah |
 | --- | --- |
@@ -153,7 +247,8 @@ Panel berjalan dengan HTTP biasa, jadi password dikirim tanpa enkripsi. Pilih
 salah satu cara berikut kalau ingin lebih aman.
 
 **Cara 1: lewat SSH tunnel (tanpa domain).** Set `PANEL_LISTEN='127.0.0.1:8088'`
-di `/etc/3proxy-panel/panel.env`, restart panel, lalu dari komputer kamu:
+di `/etc/3proxy-panel/panel.env` (Docker: di `.env`), restart panel, lalu dari
+komputer kamu:
 
 ```bash
 ssh -L 8088:127.0.0.1:8088 root@IP-VPS
@@ -185,6 +280,18 @@ sudo systemctl restart 3proxy-panel
 
 Panel sekarang di `https://panel.domainkamu.com:8088`.
 
+**Untuk Docker (Cara B)**, bedanya: pada perintah certbot pakai
+`--deploy-hook "docker restart 3proxy-panel"`, tulis dua baris `PANEL_TLS_...`
+di atas ke `~/3proxy/panel/.env`, lalu izinkan container membaca sertifikatnya:
+
+```bash
+printf 'services:\n  panel:\n    volumes:\n      - /etc/letsencrypt:/etc/letsencrypt:ro\n' > ~/3proxy/panel/docker-compose.override.yml
+```
+
+```bash
+cd ~/3proxy/panel && sudo docker compose up -d
+```
+
 ---
 
 ## Cara kerja
@@ -203,10 +310,16 @@ Panel sekarang di `https://panel.domainkamu.com:8088`.
   panel ini).
 - 3proxy memakai satu daftar user untuk semua port, jadi username yang sama
   boleh dipakai di beberapa proxy hanya jika password-nya sama.
+- Di Docker, data dan config ada di `~/3proxy/panel/data/` (`proxies.json`
+  dan `3proxy.cfg`). Container memakai jaringan VPS langsung
+  (`network_mode: host`) supaya port proxy baru langsung bisa dipakai tanpa
+  mengubah `docker-compose.yml`. Panel me-reload 3proxy dengan sinyal, dan
+  3proxy dinyalakan ulang otomatis kalau mati.
 
 ### Pengaturan
 
-Semua pengaturan ada di `/etc/3proxy-panel/panel.env`:
+Semua pengaturan ada di `/etc/3proxy-panel/panel.env` (Cara A) atau
+`~/3proxy/panel/.env` (Cara B):
 
 | Variabel | Default | Keterangan |
 | --- | --- | --- |
@@ -235,6 +348,11 @@ chroot, jadi file log ada di `/var/log/3proxy/`), isi
 `PANEL_HEADER='/etc/3proxy-panel/header.cfg'`, restart panel lalu klik
 **Terapkan ulang**.
 
+Di Docker, simpan file itu sebagai `~/3proxy/panel/data/header.cfg`, isi
+`PANEL_HEADER='/data/header.cfg'` di `.env`, lalu `sudo docker compose up -d`
+dan klik **Terapkan ulang**. Baris `log` tanpa nama file menulis log 3proxy
+ke `sudo docker compose logs`.
+
 ---
 
 ## Menghapus panel
@@ -253,6 +371,17 @@ sudo systemctl daemon-reload
 
 Config 3proxy lama bisa dikembalikan dari file `3proxy.cfg.bak-*` di
 `/usr/local/3proxy/conf/`.
+
+**Docker (Cara B):** hentikan container dan hapus image-nya, lalu hapus data
+proxy kalau tidak dipakai lagi:
+
+```bash
+cd ~/3proxy/panel && sudo docker compose down --rmi all
+```
+
+```bash
+sudo rm -rf ~/3proxy/panel/data ~/3proxy/panel/.env
+```
 
 ---
 

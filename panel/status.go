@@ -133,16 +133,20 @@ func readFirstLine(path string) string {
 	return strings.TrimSpace(line)
 }
 
+// readOSName names the distribution. In a container the host's os-release
+// is expected at /host/etc/os-release, its own describes the image.
 func readOSName() string {
-	f, err := os.Open("/etc/os-release")
-	if err != nil {
-		return runtime.GOOS
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		if v, ok := strings.CutPrefix(sc.Text(), "PRETTY_NAME="); ok {
-			return strings.Trim(v, `"'`)
+	for _, path := range []string{"/host/etc/os-release", "/etc/os-release"} {
+		f, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			if v, ok := strings.CutPrefix(sc.Text(), "PRETTY_NAME="); ok {
+				return strings.Trim(v, `"'`)
+			}
 		}
 	}
 	return runtime.GOOS

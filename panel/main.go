@@ -6,6 +6,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -93,6 +94,14 @@ func main() {
 		host:      *host,
 		panelPort: panelPort,
 		proxies:   proxies,
+	}
+	// Without a configuration 3proxy cannot start, as in a new container.
+	// An existing one is left alone until the first change.
+	if _, err := os.Stat(a.cfgFile); errors.Is(err, os.ErrNotExist) {
+		if err := writeConfig(a.cfgFile, renderConfig(proxies, header, cfgPath, a.chrooted)); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("wrote %s", a.cfgFile)
 	}
 	go a.sampler.run(2 * time.Second)
 
