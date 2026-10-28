@@ -160,13 +160,18 @@ func (a *auth) takeFlash(r *http.Request) (string, bool) {
 	return msg, isError
 }
 
-// sameOrigin rejects requests a browser sent on behalf of another site.
-// The session cookie is SameSite=Strict already; this covers older
-// browsers.
+// sameOrigin rejects requests a browser sent on behalf of another site,
+// another port of the VPS included. The session cookie is SameSite=Strict
+// already; this covers older browsers. Requests without these headers,
+// from curl for instance, pass.
 func sameOrigin(r *http.Request) bool {
-	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "", "same-origin", "none":
+	default:
 		return false
 	}
+	// Browsers send "null" when the referrer policy hides the origin, which
+	// securityHeaders avoids for this site's own requests.
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		return true
