@@ -30,15 +30,92 @@ func TestValidate(t *testing.T) {
 		{"bad ext ip", []Proxy{{ID: "a", Type: "http", Port: 3128, Username: "u", Password: "p", ExtIP: "1.2.3"}}, false},
 		{"newline in note", []Proxy{{ID: "a", Type: "http", Port: 3128, Username: "u", Password: "p", Note: "a\nb"}}, false},
 	}
+	all := portRange{1, 65535}
 	for _, tt := range tests {
-		err := validate(tt.list, 8088, 1)
+		err := validate(tt.list, 8088, all)
 		if (err == nil) != tt.ok {
 			t.Errorf("%s: validate() = %v, want ok=%v", tt.name, err, tt.ok)
 		}
 	}
 	low := []Proxy{testProxy("a", 80, "u", "p")}
-	if validate(low, 8088, 1) != nil || validate(low, 8088, 1024) == nil {
-		t.Errorf("port 80 should only be refused with minPort 1024")
+	if validate(low, 8088, all) != nil || validate(low, 8088, portRange{1024, 65535}) == nil {
+		t.Errorf("port 80 should only be refused with a range from 1024")
+	}
+	if validate([]Proxy{testProxy("a", 30000, "u", "p")}, 8088, portRange{20000, 29999}) == nil {
+		t.Errorf("port above the range accepted")
+	}
+}
+
+func TestParsePortRange(t *testing.T) {
+	tests := []struct {
+		in     string
+		lowest int
+		want   portRange
+		ok     bool
+	}{
+		{"", 1024, portRange{1024, 65535}, true},
+		{"", 1, portRange{1, 65535}, true},
+		{"20000-29999", 1024, portRange{20000, 29999}, true},
+		{" 3128 - 3200 ", 1, portRange{3128, 3200}, true},
+		{"80-100", 1, portRange{80, 100}, true},
+		{"80-100", 1024, portRange{}, false},
+		{"3200-3128", 1, portRange{}, false},
+		{"20000-70000", 1, portRange{}, false},
+		{"20000", 1, portRange{}, false},
+		{"a-b", 1, portRange{}, false},
+	}
+	for _, tt := range tests {
+		got, err := parsePortRange(tt.in, tt.lowest)
+		if (err == nil) != tt.ok || got != tt.want {
+			t.Errorf("parsePortRange(%q, %d) = %v, %v; want %v ok=%v", tt.in, tt.lowest, got, err, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestCheckFree(t *testing.T) {
+	current := []Proxy{testProxy("a", 3128, "u", "p")}
+	listening := map[int]bool{22: true, 3128: true, 3306: true}
+	ok := [][]Proxy{
+		// 3128 is 3proxy's own.
+		{testProxy("a", 3128, "u", "p"), testProxy("b", 3129, "u", "p")},
+		// The edited proxy left 3128, another one takes it over.
+		{testProxy("a", 3130, "u", "p"), testProxy("b", 3128, "u", "p")},
+		// A disabled proxy may sit on a busy port.
+		{testProxy("a", 3128, "u", "p"), {ID: "b", Type: "http", Port: 3306, Username: "u", Password: "p"}},
+	}
+	for i, next := range ok {
+		if err := checkFree(next, current, listening); err != nil {
+			t.Errorf("case %d: %v", i, err)
+		}
+	}
+	if checkFree([]Proxy{testProxy("b", 3306, "u", "p")}, current, listening) == nil {
+		t.Errorf("port used by another program accepted")
+	}
+}
+
+func TestSuggestPort(t *testing.T) {
+	all := portRange{1, 65535}
+	none := map[int]bool{}
+	tests := []struct {
+		list      []Proxy
+		allowed   portRange
+		listening map[int]bool
+		want      int
+	}{
+		{nil, all, none, 3128},
+		{nil, portRange{20000, 29999}, none, 20000},
+		{[]Proxy{testProxy("a", 3128, "u", "p")}, all, none, 3129},
+		{[]Proxy{testProxy("a", 20005, "u", "p")}, portRange{20000, 29999}, none, 20006},
+		// Skips the panel and other programs.
+		{nil, portRange{8087, 8100}, map[int]bool{8087: true}, 8089},
+		// Wraps around at the end of the range.
+		{[]Proxy{testProxy("a", 20002, "u", "p")}, portRange{20000, 20002}, none, 20000},
+		{[]Proxy{testProxy("a", 20000, "u", "p")}, portRange{20000, 20000}, none, 0},
+	}
+	for i, tt := range tests {
+		if got := suggestPort(tt.list, tt.allowed, 8088, tt.listening); got != tt.want {
+			t.Errorf("case %d: suggestPort() = %d, want %d", i, got, tt.want)
+		}
 	}
 }
 

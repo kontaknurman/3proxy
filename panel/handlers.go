@@ -27,6 +27,12 @@ type pageData struct {
 	Form       Proxy
 	FormError  string
 	LocalIPs   []string
+	Ports      portRange
+}
+
+// formPage is the data of a page with the proxy form.
+func (a *app) formPage(form Proxy, formErr string) pageData {
+	return pageData{Form: form, FormError: formErr, LocalIPs: localIPs(), Ports: a.ports}
 }
 
 func (a *app) render(w http.ResponseWriter, page string, status int, data any) {
@@ -108,9 +114,11 @@ func (a *app) indexData(r *http.Request, form Proxy, formErr string) pageData {
 		views[i] = a.view(r, p)
 	}
 	if form.Type == "" {
-		form = Proxy{Type: "http", Port: a.suggestPort(list), Enabled: true}
+		port := suggestPort(list, a.ports, a.panelPort, listeningPorts())
+		form = Proxy{Type: "http", Port: port, Enabled: true}
 	}
-	d := pageData{Proxies: views, Form: form, FormError: formErr, LocalIPs: localIPs()}
+	d := a.formPage(form, formErr)
+	d.Proxies = views
 	d.Flash, d.FlashError = a.auth.takeFlash(r)
 	return d
 }
@@ -172,7 +180,7 @@ func (a *app) editPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	a.render(w, "edit", http.StatusOK, pageData{Form: list[i], LocalIPs: localIPs()})
+	a.render(w, "edit", http.StatusOK, a.formPage(list[i], ""))
 }
 
 func (a *app) update(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +201,7 @@ func (a *app) update(w http.ResponseWriter, r *http.Request) {
 		return list, nil
 	})
 	if err != nil {
-		a.render(w, "edit", http.StatusBadRequest, pageData{Form: p, FormError: err.Error(), LocalIPs: localIPs()})
+		a.render(w, "edit", http.StatusBadRequest, a.formPage(p, err.Error()))
 		return
 	}
 	a.done(w, r, fmt.Sprintf("Proxy port %d disimpan", p.Port), reloadErr)

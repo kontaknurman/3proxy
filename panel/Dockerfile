@@ -25,8 +25,7 @@ COPY --from=panel /3proxy-panel /usr/local/bin/3proxy-panel
 COPY --chmod=0755 panel/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # 3proxy runs as root inside the container without a chroot, so the
 # configuration lives next to the data.
-ENV PANEL_LISTEN=:8088 \
-    PANEL_DATA=/data/proxies.json \
+ENV PANEL_DATA=/data/proxies.json \
     PANEL_CONFIG=/data/3proxy.cfg \
     PANEL_CHROOT= \
     PANEL_RELOAD="pkill -USR1 -x 3proxy"

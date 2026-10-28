@@ -258,15 +258,15 @@ func findProcess(name string, sysUptime float64) ProcessInfo {
 	return ProcessInfo{}
 }
 
-// countConnections counts the established TCP connections to each of the
-// given local ports.
-func countConnections(ports []int) map[int]int {
-	counts := make(map[int]int, len(ports))
-	want := make(map[int]bool, len(ports))
-	for _, p := range ports {
-		counts[p] = 0
-		want[p] = true
-	}
+// TCP socket states as /proc/net/tcp shows them.
+const (
+	tcpEstablished = "01"
+	tcpListen      = "0A"
+)
+
+// scanTCP calls fn with the state and local port of every IPv4 and IPv6
+// TCP socket.
+func scanTCP(fn func(state string, port int)) {
 	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
 		f, err := os.Open(path)
 		if err != nil {
@@ -276,20 +276,44 @@ func countConnections(ports []int) map[int]int {
 		sc.Scan() // header
 		for sc.Scan() {
 			fields := strings.Fields(sc.Text())
-			// 01 is TCP_ESTABLISHED
-			if len(fields) < 4 || fields[3] != "01" {
+			if len(fields) < 4 {
 				continue
 			}
 			_, hexPort, ok := strings.Cut(fields[1], ":")
 			if !ok {
 				continue
 			}
-			port, err := strconv.ParseUint(hexPort, 16, 16)
-			if err == nil && want[int(port)] {
-				counts[int(port)]++
+			if port, err := strconv.ParseUint(hexPort, 16, 16); err == nil {
+				fn(fields[3], int(port))
 			}
 		}
 		f.Close()
 	}
+}
+
+// countConnections counts the established TCP connections to each of the
+// given local ports.
+func countConnections(ports []int) map[int]int {
+	counts := make(map[int]int, len(ports))
+	for _, p := range ports {
+		counts[p] = 0
+	}
+	scanTCP(func(state string, port int) {
+		if _, ok := counts[port]; ok && state == tcpEstablished {
+			counts[port]++
+		}
+	})
 	return counts
+}
+
+// listeningPorts returns the TCP ports some program listens on, on any
+// address.
+func listeningPorts() map[int]bool {
+	ports := map[int]bool{}
+	scanTCP(func(state string, port int) {
+		if state == tcpListen {
+			ports[port] = true
+		}
+	})
+	return ports
 }

@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -32,7 +33,9 @@ func envOr(key, def string) string {
 }
 
 func main() {
-	listen := flag.String("listen", envOr("PANEL_LISTEN", ":8088"), "address the panel listens on")
+	port := flag.String("port", envOr("PANEL_PORT", "8088"), "port the panel listens on, on every address")
+	listen := flag.String("listen", envOr("PANEL_LISTEN", ""), "address the panel listens on, such as 127.0.0.1:8088, instead of -port")
+	proxyPorts := flag.String("proxy-ports", envOr("PANEL_PROXY_PORTS", ""), "range of ports proxies may use, such as 20000-29999, default every port 3proxy can use")
 	dataFile := flag.String("data", envOr("PANEL_DATA", "/var/lib/3proxy-panel/proxies.json"), "file the proxies are stored in")
 	// The defaults match the deb and rpm packages: 3proxy chroots into
 	// /usr/local/3proxy and includes /conf/3proxy.cfg from there.
@@ -70,14 +73,37 @@ func main() {
 		cfgPath = "/" + rel
 	}
 
+	// A chrooted 3proxy has dropped root and cannot bind low ports.
+	lowest := 1
+	if *chroot != "" {
+		lowest = 1024
+	}
+	allowed, err := parsePortRange(*proxyPorts, lowest)
+	if err != nil {
+		log.Fatalf("PANEL_PROXY_PORTS: %v", err)
+	}
+
 	proxies, err := loadProxies(*dataFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	addr := *listen
+	if addr == "" {
+		if n, err := strconv.Atoi(*port); err != nil || n < 1 || n > 65535 {
+			log.Fatalf("PANEL_PORT %q is not a port number", *port)
+		}
+		addr = ":" + *port
+	}
 	panelPort := 0
-	if _, port, err := net.SplitHostPort(*listen); err == nil {
-		panelPort, _ = strconv.Atoi(port)
+	if _, p, err := net.SplitHostPort(addr); err == nil {
+		panelPort, _ = strconv.Atoi(p)
+	}
+	ln, err := net.Listen("tcp", addr)
+	if errors.Is(err, syscall.EADDRINUSE) {
+		log.Fatalf("port %d is already used by another program, set another PANEL_PORT", panelPort)
+	} else if err != nil {
+		log.Fatal(err)
 	}
 
 	useTLS := *tlsCert != "" && *tlsKey != ""
@@ -93,6 +119,7 @@ func main() {
 		reloadCmd: *reloadCmd,
 		host:      *host,
 		panelPort: panelPort,
+		ports:     allowed,
 		proxies:   proxies,
 	}
 	// Without a configuration 3proxy cannot start, as in a new container.
@@ -106,18 +133,17 @@ func main() {
 	go a.sampler.run(2 * time.Second)
 
 	srv := &http.Server{
-		Addr:              *listen,
 		Handler:           a.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Printf("3proxy-panel listening on %s, %d proxies, config %s", *listen, len(proxies), *cfgFile)
+	log.Printf("3proxy-panel listening on %s, %d proxies on ports %s, config %s", addr, len(proxies), allowed, *cfgFile)
 	if useTLS {
-		err = srv.ListenAndServeTLS(*tlsCert, *tlsKey)
+		err = srv.ServeTLS(ln, *tlsCert, *tlsKey)
 	} else {
-		err = srv.ListenAndServe()
+		err = srv.Serve(ln)
 	}
 	log.Fatal(err)
 }
@@ -134,6 +160,7 @@ type app struct {
 	reloadCmd string
 	host      string
 	panelPort int
+	ports     portRange // allowed for proxies
 
 	mu      sync.Mutex
 	proxies []Proxy
@@ -224,11 +251,10 @@ func (a *app) change(fn func([]Proxy) ([]Proxy, error)) (reloadErr, err error) {
 		return nil, err
 	}
 	sortProxies(next)
-	minPort := 1
-	if a.chrooted {
-		minPort = 1024
+	if err := validate(next, a.panelPort, a.ports); err != nil {
+		return nil, err
 	}
-	if err := validate(next, a.panelPort, minPort); err != nil {
+	if err := checkFree(next, a.proxies, listeningPorts()); err != nil {
 		return nil, err
 	}
 	if err := writeConfig(a.cfgFile, renderConfig(next, a.header, a.cfgPath, a.chrooted)); err != nil {
@@ -243,23 +269,29 @@ func (a *app) change(fn func([]Proxy) ([]Proxy, error)) (reloadErr, err error) {
 	return runReload(a.reloadCmd), nil
 }
 
-// suggestPort proposes a free port for a new proxy.
-func (a *app) suggestPort(list []Proxy) int {
-	used := map[int]bool{a.panelPort: true}
-	port := 3128
+// suggestPort proposes a port for a new proxy: the one after the highest
+// proxy port, or the first free one after it in the allowed range. 0 means
+// the range is full.
+func suggestPort(list []Proxy, allowed portRange, panelPort int, listening map[int]bool) int {
+	used := map[int]bool{panelPort: true}
+	start := 3128
+	if !allowed.contains(start) {
+		start = allowed.Min
+	}
 	for _, p := range list {
 		used[p.Port] = true
-		if p.Port >= port {
-			port = p.Port + 1
+		if p.Port >= start && p.Port < allowed.Max {
+			start = p.Port + 1
 		}
 	}
-	for port <= 65535 && used[port] {
-		port++
+	size := allowed.Max - allowed.Min + 1
+	for i := 0; i < size; i++ {
+		port := allowed.Min + (start-allowed.Min+i)%size
+		if !used[port] && !listening[port] {
+			return port
+		}
 	}
-	if port > 65535 {
-		return 0
-	}
-	return port
+	return 0
 }
 
 // localIPs lists the addresses of the VPS a proxy may connect out from.

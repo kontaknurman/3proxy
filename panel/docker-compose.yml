@@ -1,8 +1,5 @@
-# 3proxy with its panel. Put the password in a .env file next to this one:
-#
-#   PANEL_PASSWORD=yourpassword
-#
-# then run: docker compose up -d --build
+# 3proxy with its panel. The settings come from a .env file next to this
+# one, see .env.example. Run: docker compose up -d --build
 services:
   panel:
     build:
@@ -16,7 +13,9 @@ services:
     network_mode: host
     environment:
       PANEL_PASSWORD: ${PANEL_PASSWORD:?put PANEL_PASSWORD in the .env file}
-      PANEL_LISTEN: ${PANEL_LISTEN:-:8088}
+      PANEL_PORT: ${PANEL_PORT:-8088}
+      PANEL_PROXY_PORTS: ${PANEL_PROXY_PORTS:-}
+      PANEL_LISTEN: ${PANEL_LISTEN:-}
       PANEL_HOST: ${PANEL_HOST:-}
       PANEL_HEADER: ${PANEL_HEADER:-}
       # HTTPS: mount the certificates with a docker-compose.override.yml,

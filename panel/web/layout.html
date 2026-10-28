@@ -33,7 +33,7 @@
     </select>
   </label>
   <label>Port
-    <input name="port" type="number" min="1" max="65535" required value="{{if .Form.Port}}{{.Form.Port}}{{end}}">
+    <input name="port" type="number" min="{{.Ports.Min}}" max="{{.Ports.Max}}" required value="{{if .Form.Port}}{{.Form.Port}}{{end}}">
   </label>
   <label>Username
     <span class="with-btn">
@@ -56,5 +56,6 @@
   </label>
   <label class="check"><input type="checkbox" name="enabled" {{if .Form.Enabled}}checked{{end}}> Aktif</label>
 </div>
+<p class="hint">Port proxy: {{.Ports.Min}}–{{.Ports.Max}}. Port yang sudah dipakai program lain di VPS ditolak otomatis.</p>
 <p class="hint">Username dan password: huruf, angka, titik, minus atau underscore. Username yang sama boleh dipakai di beberapa proxy asal password-nya sama.</p>
 {{end}}

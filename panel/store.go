@@ -11,9 +11,36 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// portRange is the range of ports proxies may listen on.
+type portRange struct{ Min, Max int }
+
+func (r portRange) String() string { return fmt.Sprintf("%d-%d", r.Min, r.Max) }
+
+func (r portRange) contains(port int) bool { return port >= r.Min && port <= r.Max }
+
+// parsePortRange reads a "MIN-MAX" range. An empty one allows every port
+// from lowest up.
+func parsePortRange(s string, lowest int) (portRange, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return portRange{lowest, 65535}, nil
+	}
+	lo, hi, ok := strings.Cut(s, "-")
+	min, err1 := strconv.Atoi(strings.TrimSpace(lo))
+	max, err2 := strconv.Atoi(strings.TrimSpace(hi))
+	if !ok || err1 != nil || err2 != nil || min < 1 || max > 65535 || min > max {
+		return portRange{}, fmt.Errorf("port range %q is not valid, use for example 20000-29999", s)
+	}
+	if min < lowest {
+		return portRange{}, fmt.Errorf("port range %q: 3proxy runs unprivileged and cannot use ports below %d", s, lowest)
+	}
+	return portRange{min, max}, nil
+}
 
 // Proxy types and the 3proxy service each of them is served by.
 var proxyServices = map[string]string{
@@ -70,11 +97,11 @@ func (p *Proxy) check() error {
 	return nil
 }
 
-// validate checks every proxy and the rules between them: a port is used
-// once, and a username shared by several proxies has the same password,
-// since 3proxy keeps one user list for all services. Ports below minPort
-// are refused: a chrooted 3proxy runs unprivileged and cannot bind them.
-func validate(list []Proxy, reservedPort, minPort int) error {
+// validate checks every proxy and the rules between them: a port is in the
+// allowed range and used once, and a username shared by several proxies
+// has the same password, since 3proxy keeps one user list for all
+// services.
+func validate(list []Proxy, reservedPort int, allowed portRange) error {
 	ports := map[int]string{}
 	passwords := map[string]string{}
 	for i := range list {
@@ -82,8 +109,8 @@ func validate(list []Proxy, reservedPort, minPort int) error {
 		if err := p.check(); err != nil {
 			return err
 		}
-		if p.Port < minPort {
-			return fmt.Errorf("port minimal %d: 3proxy berjalan tanpa hak root dan tidak bisa memakai port %d", minPort, p.Port)
+		if !allowed.contains(p.Port) {
+			return fmt.Errorf("port %d di luar rentang port proxy %s", p.Port, allowed)
 		}
 		if p.Port == reservedPort {
 			return fmt.Errorf("port %d dipakai oleh panel", p.Port)
@@ -96,6 +123,23 @@ func validate(list []Proxy, reservedPort, minPort int) error {
 			return fmt.Errorf("username %q sudah dipakai proxy lain dengan password berbeda", p.Username)
 		}
 		passwords[p.Username] = p.Password
+	}
+	return nil
+}
+
+// checkFree refuses enabled proxies on ports another program listens on.
+// The ports of the proxies enabled in current are held by 3proxy itself.
+func checkFree(next, current []Proxy, listening map[int]bool) error {
+	held := map[int]bool{}
+	for _, p := range current {
+		if p.Enabled {
+			held[p.Port] = true
+		}
+	}
+	for _, p := range next {
+		if p.Enabled && !held[p.Port] && listening[p.Port] {
+			return fmt.Errorf("port %d sudah dipakai program lain di VPS, pilih port lain", p.Port)
+		}
 	}
 	return nil
 }
