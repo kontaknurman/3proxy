@@ -1,0 +1,13 @@
+{{define "title"}}Masuk · 3proxy Panel{{end}}
+
+{{define "content"}}
+<section class="card login">
+  <h1>Masuk</h1>
+  <form method="post" action="/login">
+    <label>Password
+      <input name="password" type="password" required autofocus autocomplete="current-password">
+    </label>
+    <button class="btn btn-primary" type="submit">Masuk</button>
+  </form>
+</section>
+{{end}}
