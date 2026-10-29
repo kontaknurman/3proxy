@@ -1,0 +1,91 @@
+{{define "nav"}}{{template "logout"}}{{end}}
+
+{{define "content"}}
+<section id="status" class="status">
+  <div class="card stat">
+    <div class="stat-label">Server</div>
+    <div class="stat-value" data-s="hostname">–</div>
+    <div class="stat-sub"><span data-s="os"></span><br><span data-s="kernel"></span></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Uptime</div>
+    <div class="stat-value" data-s="uptime">–</div>
+    <div class="stat-sub">Load: <span data-s="load">–</span> · <span data-s="cores">–</span> core</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">CPU</div>
+    <div class="stat-value" data-s="cpu">–</div>
+    <div class="bar"><span data-bar="cpu"></span></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">RAM</div>
+    <div class="stat-value" data-s="mem">–</div>
+    <div class="bar"><span data-bar="mem"></span></div>
+    <div class="stat-sub">Swap: <span data-s="swap">–</span></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Disk /</div>
+    <div class="stat-value" data-s="disk">–</div>
+    <div class="bar"><span data-bar="disk"></span></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Jaringan</div>
+    <div class="stat-value"><span data-s="rxrate">–</span> ↓ · <span data-s="txrate">–</span> ↑</div>
+    <div class="stat-sub">Total: <span data-s="rx">–</span> ↓ · <span data-s="tx">–</span> ↑</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">Service 3proxy</div>
+    <div class="stat-value" data-s="proxy">–</div>
+    <div class="stat-sub" data-s="proxysub"></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <h2>Proxy <small>({{len .Proxies}})</small></h2>
+    <div class="actions">
+      <a class="btn" href="/export.txt" target="_blank">Export</a>
+      <form method="post" action="/apply"><button class="btn" type="submit" title="Tulis ulang config dan reload 3proxy">Terapkan ulang</button></form>
+    </div>
+  </div>
+  {{if .Proxies}}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Tipe</th><th>Alamat</th><th>Username</th><th>Password</th><th>Koneksi</th><th>Catatan</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{range .Proxies}}
+      <tr class="{{if not .Enabled}}off{{end}}">
+        <td>{{if .Enabled}}<span class="badge badge-on">aktif</span>{{else}}<span class="badge">nonaktif</span>{{end}}</td>
+        <td>{{if eq .Type "http"}}HTTP{{else if eq .Type "socks5"}}SOCKS5{{else}}HTTP+SOCKS5{{end}}</td>
+        <td class="mono">{{.Host}}:{{.Port}}</td>
+        <td class="mono">{{.Username}}</td>
+        <td class="mono">{{.Password}}</td>
+        <td class="num" {{if .Enabled}}data-conn="{{.Port}}"{{end}}>–</td>
+        <td>{{.Note}}</td>
+        <td class="row-actions">
+          <button class="btn btn-small" type="button" data-copy="{{.Line}}" title="ip:port:user:pass">Salin</button>
+          <button class="btn btn-small" type="button" data-copy="{{.URL}}" title="{{.URL}}">URL</button>
+          <a class="btn btn-small" href="/proxies/{{.ID}}">Edit</a>
+          <form method="post" action="/proxies/{{.ID}}/toggle"><button class="btn btn-small" type="submit">{{if .Enabled}}Matikan{{else}}Nyalakan{{end}}</button></form>
+          <form method="post" action="/proxies/{{.ID}}/delete" data-confirm="Hapus proxy port {{.Port}}?"><button class="btn btn-small btn-danger" type="submit">Hapus</button></form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p class="empty">Belum ada proxy. Tambahkan lewat form di bawah.</p>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Tambah proxy</h2>
+  <form method="post" action="/proxies">
+    {{template "proxyform" .}}
+    <div class="actions"><button class="btn btn-primary" type="submit">Tambah</button></div>
+  </form>
+</section>
+{{end}}

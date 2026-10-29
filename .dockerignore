@@ -71,3 +71,8 @@ verfile.sh
 res
 3proxy.res
 copytgz.sh
+
+# 3proxy-panel docker data and settings
+/panel/.env
+/panel/data/
+/panel/docker-compose.override.yml

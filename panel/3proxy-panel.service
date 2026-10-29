@@ -1,0 +1,18 @@
+[Unit]
+Description=3proxy web panel
+After=network.target 3proxy.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/3proxy-panel/panel.env
+ExecStart=/usr/local/bin/3proxy-panel
+Restart=on-failure
+RestartSec=5s
+# The panel writes the 3proxy configuration and reloads 3proxy, which needs
+# root.
+User=root
+StateDirectory=3proxy-panel
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

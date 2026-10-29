@@ -1,0 +1,16 @@
+{{define "title"}}Edit proxy · 3proxy Panel{{end}}
+
+{{define "nav"}}{{template "logout"}}{{end}}
+
+{{define "content"}}
+<section class="card">
+  <h2>Edit proxy port {{.Form.Port}}</h2>
+  <form method="post" action="/proxies/{{.Form.ID}}">
+    {{template "proxyform" .}}
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Simpan</button>
+      <a class="btn" href="/">Batal</a>
+    </div>
+  </form>
+</section>
+{{end}}

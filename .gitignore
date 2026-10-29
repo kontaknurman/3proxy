@@ -274,3 +274,10 @@ build*/*
 testcerts/
 /.claude
 bench/mix/mix-linux-*
+
+# 3proxy-panel build output
+panel/3proxy-panel
+# 3proxy-panel docker data and settings
+panel/.env
+panel/data/
+panel/docker-compose.override.yml

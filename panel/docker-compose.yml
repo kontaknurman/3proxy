@@ -1,0 +1,28 @@
+# 3proxy with its panel. The settings come from a .env file next to this
+# one, see .env.example. Run: docker compose up -d --build
+services:
+  panel:
+    build:
+      context: ..
+      dockerfile: panel/Dockerfile
+    image: 3proxy-panel
+    container_name: 3proxy-panel
+    restart: unless-stopped
+    # Proxy ports are added from the panel and cannot be published one by
+    # one, so the container uses the network of the VPS directly.
+    network_mode: host
+    environment:
+      PANEL_PASSWORD: ${PANEL_PASSWORD:?put PANEL_PASSWORD in the .env file}
+      PANEL_PORT: ${PANEL_PORT:-8088}
+      PANEL_PROXY_PORTS: ${PANEL_PROXY_PORTS:-}
+      PANEL_LISTEN: ${PANEL_LISTEN:-}
+      PANEL_HOST: ${PANEL_HOST:-}
+      PANEL_HEADER: ${PANEL_HEADER:-}
+      # HTTPS: mount the certificates with a docker-compose.override.yml,
+      # see README.md.
+      PANEL_TLS_CERT: ${PANEL_TLS_CERT:-}
+      PANEL_TLS_KEY: ${PANEL_TLS_KEY:-}
+    volumes:
+      - ./data:/data
+      # Lets the panel name the distribution of the VPS.
+      - /etc/os-release:/host/etc/os-release:ro

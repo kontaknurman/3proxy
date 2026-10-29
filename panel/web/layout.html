@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}3proxy Panel{{end}}</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">3proxy Panel</a>
+  {{block "nav" .}}{{end}}
+</header>
+<main>
+{{if .Flash}}<div class="flash {{if .FlashError}}flash-error{{end}}">{{.Flash}}</div>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>
+
+{{define "logout"}}
+  <form method="post" action="/logout"><button class="btn btn-ghost" type="submit">Keluar</button></form>
+{{end}}
+
+{{define "proxyform"}}
+{{if .FormError}}<div class="flash flash-error">{{.FormError}}</div>{{end}}
+<div class="grid-form">
+  <label>Tipe
+    <select name="type">
+      {{$cur := .Form.Type}}
+      {{range types}}<option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{if eq . "http"}}HTTP(S){{else if eq . "socks5"}}SOCKS5{{else}}HTTP + SOCKS5{{end}}</option>{{end}}
+    </select>
+  </label>
+  <label>Port
+    <input name="port" type="number" min="{{.Ports.Min}}" max="{{.Ports.Max}}" required value="{{if .Form.Port}}{{.Form.Port}}{{end}}">
+  </label>
+  <label>Username
+    <span class="with-btn">
+      <input id="f-username" name="username" required maxlength="64" pattern="[A-Za-z0-9._\-]+" value="{{.Form.Username}}" autocomplete="off">
+      <button class="btn btn-small" type="button" data-gen="f-username" data-len="8" title="Buat acak">Acak</button>
+    </span>
+  </label>
+  <label>Password
+    <span class="with-btn">
+      <input id="f-password" name="password" required maxlength="64" pattern="[A-Za-z0-9._\-]+" value="{{.Form.Password}}" autocomplete="off">
+      <button class="btn btn-small" type="button" data-gen="f-password" data-len="14" title="Buat acak">Acak</button>
+    </span>
+  </label>
+  <label><span>IP keluar <small>(opsional)</small></span>
+    <input name="ext_ip" list="local-ips" value="{{.Form.ExtIP}}" placeholder="otomatis" autocomplete="off">
+    <datalist id="local-ips">{{range .LocalIPs}}<option value="{{.}}">{{end}}</datalist>
+  </label>
+  <label><span>Catatan <small>(opsional)</small></span>
+    <input name="note" maxlength="200" value="{{.Form.Note}}" autocomplete="off">
+  </label>
+  <label class="check"><input type="checkbox" name="enabled" {{if .Form.Enabled}}checked{{end}}> Aktif</label>
+</div>
+<p class="hint">Port proxy: {{.Ports.Min}}–{{.Ports.Max}}. Port yang sudah dipakai program lain di VPS ditolak otomatis.</p>
+<p class="hint">Username dan password: huruf, angka, titik, minus atau underscore. Username yang sama boleh dipakai di beberapa proxy asal password-nya sama.</p>
+{{end}}
