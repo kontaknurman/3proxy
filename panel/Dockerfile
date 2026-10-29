@@ -3,7 +3,7 @@
 #
 #   docker build -f panel/Dockerfile -t 3proxy-panel .
 #
-# or with panel/docker-compose.yml, see panel/README.md.
+# or with panel/docker-compose.yml, see README.md at the repository root.
 
 FROM docker.io/alpine:3.23 AS proxy
 RUN apk add --no-cache gcc make musl-dev linux-headers

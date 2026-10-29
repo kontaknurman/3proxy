@@ -1,421 +1,267 @@
-# 3APA3A 3proxy tiny proxy server
+# 3proxy Panel
 
-(c) 2002-2026 by Vladimir '3APA3A' Dubrovin <vlad@3proxy.org>
+Panel web untuk membuat dan mengelola proxy HTTP/SOCKS5 di VPS, sekaligus
+memantau status VPS-nya. Proxy dijalankan oleh
+[3proxy](https://github.com/3proxy/3proxy), panelnya dibuka di browser dan
+dilindungi satu password.
 
-## Repository
+- Buat, edit, hapus, aktif/nonaktifkan proxy HTTP(S), SOCKS5, atau keduanya
+  di satu port.
+- Setiap proxy punya port, username dan password sendiri, dan bisa memakai
+  IP keluar berbeda di VPS yang punya banyak IP.
+- Port panel dan rentang port proxy bisa diatur. Port yang sudah dipakai
+  program lain di VPS ditolak otomatis.
+- Status VPS langsung di panel: CPU, RAM, disk, jaringan, uptime, status
+  3proxy, dan jumlah koneksi per proxy.
+- Dipasang dengan satu perintah, langsung di sistem atau dengan Docker.
 
-### Branches
+## Persyaratan
 
-- **Master** (current/latest) branch - 3proxy 1.0
-- **0.9** (LTS) branch - 3proxy 0.9.9.x
-- **Devel** branch - 3proxy 1.1 (development, don't use it in production)
-- **Experimental** branch - 3proxy 2.0 (experimental, don't use it)
+- VPS **Ubuntu 22.04 / 24.04** atau **Debian 12** dengan IP publik.
+- Akses root atau user dengan `sudo`.
 
-### Binaries (deb / rpm / Windows zip)
+## Instalasi
 
-https://github.com/3proxy/3proxy/releases
+Pilih **salah satu** cara, jangan dua-duanya di VPS yang sama:
 
-### Package repository (apt / dnf)
+| | Tanpa Docker | Dengan Docker |
+| --- | --- | --- |
+| Cocok untuk | VPS khusus proxy, paling ringan | VPS yang sudah memakai Docker |
+| 3proxy | paket apt resmi 3proxy.org | di-build dari repo ini, di dalam container |
+| Port proxy | 1024 ke atas | semua port |
 
-Signed apt and dnf repositories are published at https://3proxy.org/repo/ in
-two channels: `current` (master) and `lts` (0.9 branch).
+### 1. Download kode
 
-Debian 12 and Ubuntu 22.04 or newer:
-
-```
-sudo curl -fsSL https://3proxy.org/repo/3proxy-release-key.asc \
-     -o /usr/share/keyrings/3proxy.asc
-sudo tee /etc/apt/sources.list.d/3proxy.sources <<EOF
-Types: deb
-URIs: https://3proxy.org/repo/deb
-Suites: current
-Components: main
-Signed-By: /usr/share/keyrings/3proxy.asc
-EOF
-sudo apt update && sudo apt install 3proxy
-```
-
-AlmaLinux, RHEL, Rocky and CentOS Stream 8, 9 and 10:
-
-```
-sudo tee /etc/yum.repos.d/3proxy.repo <<EOF
-[3proxy]
-name=3proxy
-baseurl=https://3proxy.org/repo/rpm/current/el\$releasever/\$basearch/
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://3proxy.org/repo/3proxy-release-key.asc
-EOF
-sudo dnf install 3proxy
-```
-
-Both the packages and the repository metadata are signed. See
-https://3proxy.org/repo/ for the `lts` channel and for release key details.
-
-### Docker images
-
-https://hub.docker.com/r/3proxy/3proxy
-https://github.com/3proxy/3proxy/pkgs/container/3proxy
-
-### Archive of old versions
-
-https://github.com/z3APA3A/3proxy-archive
-
-
-### Documentation
-
-Documentation (man pages and HTML) available with download, on https://3proxy.org/ and in github wiki https://github.com/3proxy/3proxy/wiki
-
-## Docker images
-
-3 docker configurations are provided, default (full) also tagged as `:latest`, `:busybox` and `:minimal`, all refer to newest stable version. Except busybox, images are distroless and contain only binaries, you can not sh inside the container. `:busybox` contains busybox shell. Images are based on current (master) branch.
-
-Images marked as LTS (`:lts`, `:lts-busybox`, `:lts-minimal`) are built from LTS branch (0.9.9.x)
-
-### Default image (`:latest`):
-
-Full installation requires to mount /etc/3proxy/3proxy.cfg files.
-
-For docker, config can be provided via `docker config` 
-
-``` 
-echo "log
-nserver 8.8.8.8
-nscache 65536
-proxy -p3129" | docker config create 3proxy
-docker run --read-only -p 3129:3129 --config source=3proxy,target=/etc/3proxy/3proxy.cfg --name 3proxy.full docker.io/3proxy/3proxy
-```
-
- `podman` does not support `config` as above.
- Mounts may be used as config alternative. `podman` used in example below can be replaced with `docker`:
-
-```
-echo "log
-nserver 8.8.8.8
-nscache 65536
-proxy -p3129" >/path/to/local/config/directory/3proxy.cfg
-podman run --read-only -p 3129:3129 -v /path/to/local/config/directory/3proxy.cfg:/etc/3proxy/3proxy.cfg --name 3proxy.full 3proxy.full
-```
-
-
- use `log` without pathname in config to log to stdout.
- plugins are located in /usr/local/3proxy/libexec (/libexec for chroot config) and since 0.9.6 symlinked by /lib and /lib64 in both chroot and non-chroot configurations, so no full path is required in `plugin` command. Use e.g. `plugin SSLPlugin.ls.so ssl_plugin`. SSLPlugin is supported since 0.9.6. Some proxy types (e.g. SOCKSv5 UDPASSCOC, SOCKSv5 BIND functionality,  ftp proxy) require access to ephemeral port, you may use e.g. -`-network host` mode or `-P` for `docker run`.
-
-since 0.9.6 images are distroless (except :busybox) it's recommended to use with read only file system, there are no benefits from chroot. For compatibility, you still can use chroot installation by mounting directory with 3proxy.cfg to /usr/local/3proxy/config.
-
-### Busybox image (`:busybox`):
-
-`full` with busybox added, to allow `sh` and few more commands like `sed` inside container. All libraries are in /lib, so chroot configuration can not use plugins.
-
-### Interactive `:minimal` image:
-
- Dockerfile for "interactive" minimal 3proxy execution, no configuration mounting is required, configuration
- is accepted from stdin. Use `end` command to indicate the end of configuration. Use `log` for stdout logging.
-
-
- `plugin` is not supported, `nserver` or `fakeresolve` are mandatory, because system resolver is not supported, no support for RADIUS and IPv6.
-
- Run example:
-
- `docker run --read-only -i -p 3129:3129 --name 3proxy docker.io/3proxy/3proxy:minimal`
-or
- `docker start -ai 3proxy` to start existing container
-
-send this to standard input (example):
-```
-nserver 8.8.8.8
-nscache 65535
-log
-proxy -p3129
-end
-```
- `nserver` is required for DNS resolutions. 
-
-Some proxy types (e.g. SOCKSv5 UDPASSCOC, SOCKSv5 BIND functionality,  ftp proxy) require access to ephemeral port, you may use e.g. `--network host` mode or `-P` to `docker run`.
-
-`:minimal` without version specified uses current stable version.
-
-## Building and installation
-
-### Windows Installation
-
-Install and start proxy as Windows service:
+Masuk ke VPS (ganti `IP-VPS` dengan IP VPS kamu):
 
 ```bash
-3proxy [path_to_config_file] --install
+ssh root@IP-VPS
 ```
-
-Config file should be located in the same directory or may be optionally specified.
-
-Remove the service (should be stopped before via `net stop 3proxy`):
 
 ```bash
-3proxy --remove
+sudo apt update && sudo apt install -y git
 ```
-
-### Building and installation on Linux
-
-#### With Makefile
 
 ```bash
-git clone https://github.com/z3apa3a/3proxy
-cd 3proxy
-ln -s Makefile.Linux Makefile
-make
-sudo make install
+git clone https://github.com/kontaknurman/3proxy.git ~/3proxy
 ```
 
-#### Default Configuration (for Makefile.Linux installation)
+### 2. Jalankan installer
 
-3proxy uses 2 configuration files in :
-- `/etc/3proxy/3proxy.cfg` (before-chroot) - This configuration file is executed before chroot and should not be modified.
-- `/usr/local/3proxy/conf/3proxy.cfg` symlinked from `/etc/3proxy/conf/3proxy.cfg` (after-chroot) - Main configuration file. Modify this file if required.
-
-All paths in `/usr/local/3proxy/conf/3proxy.cfg` are relative to chroot directory (`/usr/local/3proxy`). For future versions it's planned to move 3proxy chroot directory to `/var`.
-
-Log files are created in `/usr/local/3proxy/logs` symlinked from `/var/log/3proxy`.
-
-By default, socks is started on 0.0.0.0:1080 and proxy on 0.0.0.0:3128 with basic auth, no users are added by default.
-
-#### Adding Users
-
-Use `add3proxyuser` script to add users:
+**Tanpa Docker:**
 
 ```bash
-add3proxyuser username password [day_limit] [bandwidth]
+cd ~/3proxy && sudo bash panel/install.sh
 ```
 
-Parameters:
-- `day_limit` - traffic limit in MB per day
-- `bandwidth` - bandwidth in bits per second (1048576 = 1Mbps)
-
-Or modify `/etc/3proxy/conf/` files directly.
-
-#### With CMake
+**Dengan Docker** (Docker dipasang otomatis kalau belum ada):
 
 ```bash
-git clone https://github.com/z3apa3a/3proxy
-cd 3proxy
-mkdir build && cd build
-cmake ..
-cmake --build .
-sudo cmake --install .
+cd ~/3proxy && sudo bash panel/install.sh --docker
 ```
 
-CMake does not use chroot configuration, config file is `/etc/3proxy/3proxy.cfg`
+Installer menanyakan beberapa hal. Tekan **Enter** untuk memakai nilai di
+dalam kurung siku:
 
-### MacOS X / FreeBSD / *BSD
+```
+Buat password login panel (kosongkan agar dibuat acak):
+Ulangi password:
+Port panel [8088]:
+Rentang port proxy [20000-29999]:
+Firewall ufw aktif. Buka port 8088 dan 20000-29999 di ufw? (y/n) [y]:
+```
 
-#### With Makefile
+- **Password** tidak terlihat saat diketik. Kalau dikosongkan, password acak
+  dibuat dan ditampilkan di akhir.
+- **Port panel** adalah port untuk membuka panel di browser.
+- **Rentang port proxy** adalah port yang boleh dipakai proxy.
+- Kalau port yang dipilih sudah dipakai program lain, installer menyebut
+  programnya dan meminta port lain.
+- Pertanyaan firewall hanya muncul kalau `ufw` aktif.
+
+Selesai kalau muncul:
+
+```
+==> Selesai! Buka panel di: http://IP-VPS:8088
+```
+
+Build Docker pertama kali butuh beberapa menit.
+
+### 3. Buka port di firewall provider
+
+Kalau provider VPS punya firewall sendiri (*Security Group* di AWS,
+*Firewall* di DigitalOcean/Vultr/Hetzner, dsb.), buka port panel dan rentang
+port proxy (TCP) di sana. Kalau tidak ada, lewati langkah ini.
+
+### 4. Login
+
+Buka `http://IP-VPS:8088` di browser dan masukkan password.
+
+### Docker tanpa installer
+
+Kalau ingin mengatur Docker sendiri:
 
 ```bash
-git clone https://github.com/z3apa3a/3proxy
-cd 3proxy
-ln -s Makefile.FreeBSD Makefile
-make
+cd ~/3proxy/panel && cp .env.example .env && nano .env
 ```
 
-Binaries are in `bin/` directory.
-
-#### With CMake (recommended)
+Isi `PANEL_PASSWORD`, ubah port kalau perlu, simpan (Ctrl+O, Enter, Ctrl+X),
+lalu jalankan:
 
 ```bash
-git clone https://github.com/z3apa3a/3proxy
-cd 3proxy
-mkdir build && cd build
-cmake ..
-cmake --build .
-sudo cmake --install .
+sudo docker compose up -d --build
 ```
 
-This installs:
-- Binaries to `/usr/local/bin/`
-- Configuration to `/etc/3proxy/`
-- Plugins to `/usr/local/lib/3proxy/`
-- rc scripts to `rc.d` for BSD
-- launchd plist to `/Library/LaunchDaemons/` for MacOS
+Container memakai jaringan VPS langsung, jadi port proxy baru langsung bisa
+dipakai. Cara ini hanya untuk VPS Linux, bukan Docker Desktop di Mac/Windows.
 
-#### Service Management on macOS
+## Membuat proxy
+
+1. Di bagian **Tambah proxy**, pilih tipe: HTTP(S), SOCKS5, atau HTTP +
+   SOCKS5.
+2. Port sudah terisi dengan port kosong berikutnya. Klik **Acak** untuk
+   username dan password.
+3. **IP keluar** boleh dikosongkan. Isi hanya kalau VPS punya beberapa IP.
+4. Klik **Tambah**. Proxy langsung aktif.
+5. Klik **Salin** untuk menyalin `ip:port:user:pass`, atau **URL** untuk
+   `http://user:pass@ip:port`. **Export** menampilkan semua proxy aktif.
+
+Tes dari komputer kamu (ganti user, pass, IP dan port):
 
 ```bash
-# Load and start service
-sudo launchctl load /Library/LaunchDaemons/org.3proxy.3proxy.plist
-
-# Stop service
-sudo launchctl stop org.3proxy.3proxy
-
-# Start service
-sudo launchctl start org.3proxy.3proxy
-
-# Unload and disable service
-sudo launchctl unload /Library/LaunchDaemons/org.3proxy.3proxy.plist
+curl -x http://user:pass@IP-VPS:20000 https://api.ipify.org
 ```
 
+Kalau yang muncul IP VPS kamu, proxy sudah jalan.
 
+## Update
 
-## Features
+Data proxy, password dan pengaturan tetap aman.
 
-### 1. General
-
-- IPv4 / IPv6 support for incoming and outgoing connection, can be used as a proxy between IPv4 and IPv6 networks in either direction
-- Unix domain sockets support
-- HTTP/1.1 Proxy with keep-alive client and server support, transparent proxy support
-- HTTPS (CONNECT) proxy (compatible with HTTP/2 / SPDY)
-- Anonymous and random client IP emulation for HTTP proxy mode
-- FTP over HTTP support
-- DNS caching with built-in resolver
-- DNS proxy
-- DNS over TCP support, redirecting DNS traffic via parent proxy
-- SOCKSv4/4.5 Proxy
-- SOCKSv5 Proxy
-- SOCKSv5 UDP and BIND support (fully compatible with SocksCAP/FreeCAP for UDP)
-- Transparent SOCKS redirection for HTTP, POP3, FTP, SMTP
-- SNI proxy (based on TLS hostname)
-- TLS (SSL) server and client, 3proxy may be used as https:// type proxy or stunnel replacement
-- POP3 Proxy
-- FTP proxy
-- TCP port mapper (port forwarding)
-- UDP port mapper (port forwarding)
-- SMTP proxy
-- Threaded application (no child process)
-- Web administration and statistics
-- Plugins for functionality extension
-- Native 32/64 bit application
-
-### 2. Proxy Chaining and Network Connections
-
-- Can be used as a bridge between client and different proxy type (e.g. convert incoming HTTP proxy request from client to SOCKSv5 request to parent server)
-- Connect back proxy support to bypass firewalls
-- Parent proxy support for any type of incoming connection
-- Username/password authentication for parent proxy(s)
-- HTTPS/SOCKS4/SOCKS5 and ip/port redirection parent support
-- Random parent selection
-- Chain building (multihop proxing)
-- Load balancing between few network connections by choosing network interface
-
-### 3. Logging
-
-- Tuneable log format compatible with any log parser
-- stdout logging
-- File logging
-- Syslog logging (Unix)
-- ODBC logging
-- RADIUS accounting
-- Log file rotation
-- Automatic log file processing with external archiver (for files)
-- Character filtering for log files
-- Different log files for different services are supported
-
-### 4. Access Control
-
-- ACL-driven Access control by username, source IP, destination IP/hostname, destination port and destination action (POST, PUT, GET, etc), weekday and daytime
-- ACL-driven (user/source/destination/protocol/weekday/daytime or combined) bandwidth limitation for incoming and (!)outgoing traffic
-- ACL-driven traffic limitation per day, week or month for incoming and outgoing traffic
-- Connection limitation and ratelimiting
-- User authentication by username / password
-- RADIUS Authentication and Authorization
-- User authentication by DNS hostname
-- Authentication cache with possibility to limit user to single IP address
-- Access control by username/password for SOCKSv5 and HTTP/HTTPS/FTP
-- Cleartext or encrypted passwords
-- Connection redirection
-- Access control by requested action (CONNECT/BIND, HTTP GET/POST/PUT/HEAD/OTHER)
-- All access control entries now support weekday and time limitations
-- Hostnames and * templates are supported instead of IP address
-
-### 5. Extensions
-
-- Regular expression filtering (with PCRE2) via PCREPlugin
-- Authentication with Windows username/password (cleartext only)
-- SSL/TLS decryptions with certificate spoofing
-- Transparent redirection support for Linux and *BSD
-
-### 6. Configuration
-
-- Support for configuration files
-- Support for includes in configuration files
-- Interface binding
-- Socket options
-- Running as daemon process
-- Utility for automated networks list building
-- Configuration reload on any file change
-
-**Unix:**
-- Support for chroot
-- Support for setgid
-- Support for setuid
-- Support for signals (SIGUSR1 to reload configuration)
-
-**Windows:**
-- Support `--install` as service
-- Support `--remove` as service
-- Support for service START, STOP, PAUSE and CONTINUE commands (on PAUSE no new connection accepted, but active connections still in progress, on CONTINUE configuration is reloaded)
-
-**Windows 95/98/ME:**
-- Support `--install` as service
-- Support `--remove` as service
-
-### 7. Compilation
-
-- MSVC (static)
-- OpenWatcom (static)
-- Intel Windows Compiler (msvcrt.dll)
-- Windows/gcc (msvcrt.dll)
-- Cygwin/gcc (cygwin.dll)
-- Unix/gcc
-- Unix/ccc
-- Solaris
-- Mac OS X, iPhone OS
-- Linux and derived systems
-- Lite version for Windows 95/98/NT/2000/XP/2003
-- 32 bit and 64 bit versions for Windows Vista and above, Windows 2008 server and above
-
-## Executables
-
-### 3proxy
-Combined proxy server may be used as executable or service (supports installation and removal). It uses config file to read its configuration (see `3proxy.cfg.sample` for details). `3proxy.exe` is all-in-one, it doesn't require all others .exe to work. See `3proxy.cfg.sample` for examples, see `man 3proxy.cfg`
-
-### 3proxy_proxy
-HTTP proxy server, binds to port 3128
-
-### 3proxy_ftppr
-FTP proxy server, binds to port 21. Please do not mess it with FTP over HTTP proxy used in browsers
-
-### 3proxy_socks
-SOCKS 4/5 proxy server, binds to port 1080
-
-### 3proxy_pop3p
-POP3 proxy server, binds to port 110. You must specify POP3 username as `username@popserver[:port]` (port is 110 by default).
-
-Example: in Username configuration for your e-mail reader set `someuser@pop.somehost.ru`, to obtain mail for someuser from pop.somehost.ru via proxy.
-
-### 3proxy_smtpp
-SMTP proxy server, binds to port 25. You must specify SMTP username as `username@smtpserver[:port]` (port is 25 by default).
-
-Example: in Username configuration for your e-mail reader set `someuser@mail.somehost.ru`, to send mail as someuser via mail.somehost.ru via proxy.
-
-### 3proxy_tcppm
-TCP port mapping. Maps some TCP port on local machine to TCP port on remote host.
-
-### 3proxy_tlspr
-TLS proxy (SNI proxy) - sniffs hostname from TLS handshake
-
-### 3proxy_udppm
-UDP port mapping. Maps some UDP port on local machine to UDP port on remote machine. Only one user simultaneously can use UDP mapping, so it can't be used for public service in large networks. It's OK to use it to map to DNS server in small network or to map Counter-Strike server for single client (you can use few mappings on different ports for different clients in last case).
-
-### 3proxy_crypt
-Program to obtain crypted password for cleartext. Supports both salted and NT password.
+**Tanpa Docker:**
 
 ```bash
-3proxy_crypt password          # produces NT password
-3proxy_crypt salt password     # produces password hash with salt "salt"
+cd ~/3proxy && git pull && sudo bash panel/install.sh
 ```
 
----
+Untuk meng-update 3proxy-nya juga:
 
-Run utility with `--help` option for command line reference.
+```bash
+sudo apt update && sudo apt-get install --only-upgrade -o Dpkg::Options::=--force-confold 3proxy
+```
 
-Latest version is available from https://3proxy.org/
+**Dengan Docker** (panel dan 3proxy sekaligus):
 
-Want to donate the project? https://3proxy.org/donations/
+```bash
+cd ~/3proxy && git pull && sudo bash panel/install.sh --docker
+```
+
+## Mengubah password atau port
+
+| | Tanpa Docker | Dengan Docker |
+| --- | --- | --- |
+| Edit pengaturan | `sudo nano /etc/3proxy-panel/panel.env` | `sudo nano ~/3proxy/panel/.env` |
+| Terapkan | `sudo systemctl restart 3proxy-panel` | `cd ~/3proxy/panel && sudo docker compose up -d` |
+
+Baris yang bisa diubah:
+
+```
+PANEL_PASSWORD='passwordbaru'
+PANEL_PORT=9090
+PANEL_PROXY_PORTS=30000-30999
+```
+
+Password tidak boleh berisi spasi, tanda kutip atau backslash. Setelah
+mengganti port, buka port baru di firewall, misalnya:
+
+```bash
+sudo ufw allow 9090/tcp && sudo ufw allow 30000:30999/tcp
+```
+
+Kalau ada proxy lama di luar rentang port yang baru, edit atau hapus dulu
+proxy itu di panel sebelum membuat perubahan lain.
+
+## Perintah berguna
+
+| Keperluan | Tanpa Docker | Dengan Docker (dari `~/3proxy/panel`) |
+| --- | --- | --- |
+| Status | `sudo systemctl status 3proxy-panel 3proxy` | `sudo docker compose ps` |
+| Log | `sudo journalctl -u 3proxy-panel -f` | `sudo docker compose logs -f` |
+| Restart | `sudo systemctl restart 3proxy-panel` | `sudo docker compose restart` |
+| Stop | `sudo systemctl stop 3proxy-panel 3proxy` | `sudo docker compose down` |
+| Lihat password | `sudo grep PASSWORD /etc/3proxy-panel/panel.env` | `sudo grep PASSWORD .env` |
+
+## Masalah umum
+
+**Panel tidak bisa dibuka.** Cek panel jalan (lihat *Status* di atas), lalu
+coba dari VPS sendiri:
+
+```bash
+curl -I http://127.0.0.1:8088/login
+```
+
+Kalau ini berhasil tapi dari browser tidak, port panel belum dibuka di
+firewall (`sudo ufw status`, dan firewall provider).
+
+**Log berisi `port 8088 is already used by another program`.** Port panel
+dipakai program lain. Ganti `PANEL_PORT` (lihat
+[Mengubah password atau port](#mengubah-password-atau-port)).
+
+**Panel menolak port: `sudah dipakai program lain di VPS`.** Pilih port
+lain. Untuk melihat siapa yang memakainya (ganti 20000):
+
+```bash
+sudo ss -ltnp | grep :20000
+```
+
+**Proxy tidak bisa dipakai.** Pastikan proxy *aktif* dan kartu **Service
+3proxy** di panel *Berjalan*. Lalu tes dari VPS sendiri:
+
+```bash
+curl -x http://user:pass@127.0.0.1:20000 https://api.ipify.org
+```
+
+Kalau dari VPS berhasil tapi dari luar tidak, buka rentang port proxy di
+firewall.
+
+**Service 3proxy *Mati* sebelum ada proxy (tanpa Docker).** Normal: 3proxy
+dinyalakan begitu proxy pertama dibuat.
+
+**`Terlalu banyak percobaan gagal`.** Tunggu 10 menit atau restart panel.
+
+## Menghapus
+
+**Tanpa Docker:**
+
+```bash
+sudo systemctl disable --now 3proxy-panel
+```
+
+```bash
+sudo rm -rf /usr/local/bin/3proxy-panel /etc/systemd/system/3proxy-panel.service /etc/3proxy-panel /var/lib/3proxy-panel
+```
+
+```bash
+sudo systemctl daemon-reload
+```
+
+3proxy-nya bisa dihapus dengan `sudo apt remove 3proxy`.
+
+**Dengan Docker:**
+
+```bash
+cd ~/3proxy/panel && sudo docker compose down --rmi all
+```
+
+```bash
+sudo rm -rf ~/3proxy/panel/data ~/3proxy/panel/.env
+```
+
+## Dokumentasi lain
+
+- [panel/README.md](panel/README.md): HTTPS, semua pengaturan, cara kerja
+  panel, dan development.
+- [README-3proxy.md](README-3proxy.md): dokumentasi asli 3proxy.
+
+3proxy dibuat oleh Vladimir "3APA3A" Dubrovin, lihat [copying](copying)
+untuk lisensinya.
