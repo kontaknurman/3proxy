@@ -75,7 +75,7 @@ jobs:
        copy doc\html\devel\*.* dist\3proxy\doc\html\devel\
        copy copying dist\3proxy\
        copy authors dist\3proxy\
-       copy README.md dist\3proxy\
+       copy README-3proxy.md dist\3proxy\README.md
        copy rus.3ps dist\3proxy\
     - name: Get artifact
       uses: actions/upload-artifact@v7
