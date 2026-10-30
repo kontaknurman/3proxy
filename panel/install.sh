@@ -15,7 +15,11 @@ GO_MIN=1.22
 DEFAULT_PORT=8088
 DEFAULT_PROXY_PORTS=20000-29999
 PANEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$PANEL_DIR")"
 ENV_DIR=/etc/3proxy-panel
+# Present when 3proxy was built from this repository rather than installed
+# from 3proxy.org: later runs build it again, which updates it.
+SOURCE_MARK=$ENV_DIR/3proxy-from-source
 BIN=/usr/local/bin/3proxy-panel
 UNIT=/etc/systemd/system/3proxy-panel.service
 
@@ -191,62 +195,116 @@ finish() {
 	echo "    buka juga port $port dan ${ports:-port proxy} (TCP) di sana."
 }
 
-install_native() {
-	local env_file=$ENV_DIR/panel.env
-	if command -v docker >/dev/null && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -x 3proxy-panel >/dev/null; then
-		die "panel versi Docker sudah terpasang. Update dengan: sudo bash $0 --docker"
-	fi
-
-	# 3proxy, from the signed repository at 3proxy.org.
-	if command -v 3proxy >/dev/null; then
-		info "3proxy sudah terpasang: $(command -v 3proxy)"
-	else
-		info "Memasang 3proxy dari repository 3proxy.org"
-		apt-get update
-		apt-get install -y curl ca-certificates
-		curl -fsSL https://3proxy.org/repo/3proxy-release-key.asc -o /usr/share/keyrings/3proxy.asc
-		cat >/etc/apt/sources.list.d/3proxy.sources <<'EOF'
+# install_3proxy_apt installs 3proxy from the signed repository at
+# 3proxy.org, and fails when the VPS cannot reach it. It runs as an if
+# condition, where set -e does not apply, so every step is checked.
+install_3proxy_apt() {
+	local key=/usr/share/keyrings/3proxy.asc list=/etc/apt/sources.list.d/3proxy.sources
+	info "Memasang 3proxy dari repository 3proxy.org"
+	apt-get update || return 1
+	apt-get install -y curl ca-certificates || return 1
+	curl -fsSL --max-time 60 https://3proxy.org/repo/3proxy-release-key.asc -o "$key.new" || return 1
+	mv -f "$key.new" "$key"
+	cat >"$list" <<'EOF'
 Types: deb
 URIs: https://3proxy.org/repo/deb
 Suites: current
 Components: main
 Signed-By: /usr/share/keyrings/3proxy.asc
 EOF
-		apt-get update
-		apt-get install -y 3proxy
+	if ! { apt-get update && apt-get install -y 3proxy; }; then
+		# A repository apt cannot reach spoils every later apt update.
+		rm -f "$list"
+		return 1
 	fi
-	systemctl enable 3proxy >/dev/null 2>&1 || true
+}
 
-	# Go, only to build the panel.
+# install_3proxy_source builds 3proxy from this repository and installs it
+# the way the deb package does: binaries in /bin, chrooted into
+# /usr/local/3proxy, run by the 3proxy systemd service.
+install_3proxy_source() {
+	local tmp
+	info "Build 3proxy dari kode di repo ini"
+	if ! command -v make >/dev/null || ! command -v gcc >/dev/null; then
+		if ! { apt-get update && apt-get install -y build-essential; }; then
+			die "build-essential tidak bisa dipasang"
+		fi
+	fi
+	tmp=$(mktemp -d)
+	tar -C "$REPO_DIR" --exclude=.git --exclude=./panel -cf - . | tar -C "$tmp" -xf -
+	if ! (cd "$tmp" && make -f Makefile.Linux -j"$(nproc)" && make -f Makefile.Linux install) >"$tmp/build.log" 2>&1; then
+		tail -n 30 "$tmp/build.log" >&2
+		die "build 3proxy gagal, log lengkap: $tmp/build.log"
+	fi
+	rm -rf "$tmp"
+	systemctl daemon-reload
+	mkdir -p "$ENV_DIR"
+	touch "$SOURCE_MARK"
+	info "3proxy terpasang dari kode: $(command -v 3proxy)"
+}
+
+# find_go prints a Go of at least GO_MIN, installing one when needed: from
+# go.dev, else from apt.
+find_go() {
+	local candidate arch tmp
 	go_ok() {
 		local v
 		v=$("$1" env GOVERSION 2>/dev/null) || return 1
 		v=${v#go}
 		[ "$(printf '%s\n%s\n' "$GO_MIN" "$v" | sort -V | head -n1)" = "$GO_MIN" ]
 	}
-	local go="" candidate arch tmp
-	for candidate in go /usr/local/go/bin/go; do
+	for candidate in go /usr/local/go/bin/go /usr/lib/go/bin/go; do
 		if command -v "$candidate" >/dev/null && go_ok "$candidate"; then
-			go=$(command -v "$candidate")
-			break
+			command -v "$candidate"
+			return 0
 		fi
 	done
-	if [ -z "$go" ]; then
-		case "$(uname -m)" in
-		x86_64) arch=amd64 ;;
-		aarch64 | arm64) arch=arm64 ;;
-		armv6l | armv7l) arch=armv6l ;;
-		*) die "arsitektur $(uname -m) tidak didukung" ;;
-		esac
-		command -v curl >/dev/null || apt-get install -y curl ca-certificates
-		info "Memasang Go $GO_VERSION ke /usr/local/go"
-		tmp=$(mktemp -d)
-		curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o "$tmp/go.tar.gz"
+	case "$(uname -m)" in
+	x86_64) arch=amd64 ;;
+	aarch64 | arm64) arch=arm64 ;;
+	armv6l | armv7l) arch=armv6l ;;
+	*) die "arsitektur $(uname -m) tidak didukung" ;;
+	esac
+	command -v curl >/dev/null || apt-get install -y curl ca-certificates >&2
+	info "Memasang Go $GO_VERSION ke /usr/local/go" >&2
+	tmp=$(mktemp -d)
+	if curl -fsSL --max-time 300 "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" -o "$tmp/go.tar.gz"; then
 		rm -rf /usr/local/go
 		tar -C /usr/local -xzf "$tmp/go.tar.gz"
 		rm -rf "$tmp"
-		go=/usr/local/go/bin/go
+		echo /usr/local/go/bin/go
+		return 0
 	fi
+	rm -rf "$tmp"
+	warn "go.dev tidak bisa diakses, mencoba Go dari apt"
+	apt-get install -y golang-go >&2 || true
+	if go_ok /usr/lib/go/bin/go; then
+		echo /usr/lib/go/bin/go
+		return 0
+	fi
+	die "Go $GO_MIN atau lebih baru tidak bisa dipasang"
+}
+
+install_native() {
+	local env_file=$ENV_DIR/panel.env
+	if command -v docker >/dev/null && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -x 3proxy-panel >/dev/null; then
+		die "panel versi Docker sudah terpasang. Update dengan: sudo bash $0 --docker"
+	fi
+
+	# 3proxy from 3proxy.org, or from source when it was built from source
+	# before (which updates it) or 3proxy.org cannot be reached.
+	if [ -f "$SOURCE_MARK" ]; then
+		install_3proxy_source
+	elif command -v 3proxy >/dev/null; then
+		info "3proxy sudah terpasang: $(command -v 3proxy)"
+	elif ! install_3proxy_apt; then
+		warn "repository 3proxy.org tidak bisa diakses dari VPS ini (sering karena diblokir DNS provider), 3proxy di-build dari kode di repo ini"
+		install_3proxy_source
+	fi
+	systemctl enable 3proxy >/dev/null 2>&1 || true
+
+	local go
+	go=$(find_go)
 	info "Memakai $("$go" version)"
 
 	info "Build 3proxy-panel"

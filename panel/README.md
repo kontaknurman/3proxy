@@ -110,6 +110,11 @@ pengaturan, lalu klik **Terapkan ulang** di panel.
   config 3proxy di `/usr/local/3proxy/conf/3proxy.cfg`. Paket apt menjalankan
   3proxy di dalam chroot sebagai user `proxy`, karena itu port proxy minimal
   1024.
+- Kalau 3proxy.org tidak bisa diakses, installer mem-build 3proxy dari repo
+  ini dengan `make -f Makefile.Linux install`, yang menghasilkan susunan file
+  dan service yang sama dengan paket apt. File
+  `/etc/3proxy-panel/3proxy-from-source` menandainya, dan setiap kali
+  installer dijalankan lagi 3proxy di-build ulang dari kode terbaru.
 - Dengan Docker, data dan config ada di `~/3proxy/panel/data/`. 3proxy jalan
   sebagai root di container yang sama dengan panel, dan dinyalakan ulang
   otomatis kalau mati. Container memakai jaringan VPS langsung

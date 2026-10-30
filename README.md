@@ -27,7 +27,7 @@ Pilih **salah satu** cara, jangan dua-duanya di VPS yang sama:
 | | Tanpa Docker | Dengan Docker |
 | --- | --- | --- |
 | Cocok untuk | VPS khusus proxy, paling ringan | VPS yang sudah memakai Docker |
-| 3proxy | paket apt resmi 3proxy.org | di-build dari repo ini, di dalam container |
+| 3proxy | paket apt resmi 3proxy.org, atau di-build dari repo ini kalau 3proxy.org tidak bisa diakses | di-build dari repo ini, di dalam container |
 | Port proxy | 1024 ke atas | semua port |
 
 ### 1. Download kode
@@ -144,7 +144,9 @@ Data proxy, password dan pengaturan tetap aman.
 cd ~/3proxy && git pull && sudo bash panel/install.sh
 ```
 
-Untuk meng-update 3proxy-nya juga:
+Kalau 3proxy dulu di-build dari repo ini (installer memberi tahu saat
+3proxy.org tidak bisa diakses), perintah di atas juga meng-update 3proxy.
+Kalau 3proxy dari apt, update dengan:
 
 ```bash
 sudo apt update && sudo apt-get install --only-upgrade -o Dpkg::Options::=--force-confold 3proxy
@@ -192,6 +194,15 @@ proxy itu di panel sebelum membuat perubahan lain.
 | Lihat password | `sudo grep PASSWORD /etc/3proxy-panel/panel.env` | `sudo grep PASSWORD .env` |
 
 ## Masalah umum
+
+**`curl: (6) Could not resolve host: 3proxy.org` saat instalasi.** VPS
+tidak bisa mengakses 3proxy.org, biasanya karena diblokir DNS provider.
+Installer versi terbaru otomatis mem-build 3proxy dari repo ini, jadi cukup
+update kodenya lalu jalankan lagi:
+
+```bash
+cd ~/3proxy && git pull && sudo bash panel/install.sh
+```
 
 **Panel tidak bisa dibuka.** Cek panel jalan (lihat *Status* di atas), lalu
 coba dari VPS sendiri:
